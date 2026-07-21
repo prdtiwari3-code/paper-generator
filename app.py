@@ -5,9 +5,14 @@ from PIL import Image
 st.set_page_config(page_title="AI Worksheet Generator", layout="centered")
 
 st.title("📝 AI Worksheet & Question Paper Generator")
-st.write("Upload a chapter photo, set requirements, and generate a worksheet instantly.")
+st.write("Upload 1 or more chapter photos, set requirements, and generate a complete worksheet instantly.")
 
-uploaded_file = st.file_uploader("Upload Chapter Image", type=["jpg", "jpeg", "png"])
+# Enable uploading multiple files at once
+uploaded_files = st.file_uploader(
+    "Upload Chapter Images (Select 1 to 5 photos)", 
+    type=["jpg", "jpeg", "png"], 
+    accept_multiple_files=True
+)
 
 col1, col2 = st.columns(2)
 with col1:
@@ -20,19 +25,21 @@ with col2:
 api_key = st.secrets.get("GEMINI_API_KEY") or st.sidebar.text_input("Enter Gemini API Key", type="password")
 
 if st.button("✨ Generate Worksheet", type="primary"):
-    if not uploaded_file:
-        st.error("Please upload an image first!")
+    if not uploaded_files:
+        st.error("Please upload at least one image first!")
     elif not api_key:
         st.error("Please provide a Gemini API Key.")
     else:
-        with st.spinner("Analyzing chapter and generating worksheet..."):
+        with st.spinner(f"Analyzing {len(uploaded_files)} image(s) and generating worksheet..."):
             try:
                 client = genai.Client(api_key=api_key)
-                img = Image.open(uploaded_file)
+                
+                # Convert all uploaded files into PIL Images
+                images = [Image.open(file) for file in uploaded_files]
                 
                 prompt = f"""
-                You are an expert school teacher. Analyze the attached textbook image completely.
-                Based strictly on the content found in the image, generate a clean worksheet containing:
+                You are an expert school teacher. Analyze all the attached textbook images completely as a continuous chapter/lesson.
+                Based strictly on the content found across all these images, generate a clean worksheet containing:
                 1. {mcqs} Multiple Choice Questions (with options A, B, C, D)
                 2. {t_f} True or False statements
                 3. {blanks} Fill in the Blanks questions
@@ -42,9 +49,12 @@ if st.button("✨ Generate Worksheet", type="primary"):
                 Formatting: Use bold text for headers and clear spacing.
                 """
                 
+                # Pass prompt along with the list of images to Gemini
+                contents = [prompt] + images
+                
                 response = client.models.generate_content(
                     model='gemini-2.5-flash',
-                    contents=[img, prompt]
+                    contents=contents
                 )
                 
                 st.success("Worksheet Generated!")
