@@ -2,6 +2,7 @@ import streamlit as st
 from google import genai
 from PIL import Image
 from fpdf import FPDF
+import time
 
 st.set_page_config(page_title="AI Worksheet Generator", layout="centered")
 
@@ -30,11 +31,12 @@ def create_pdf(text_content):
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.set_font("Helvetica", size=11)
     
-    # Handle utf-8 encoding safely for basic text
+    epw = pdf.epw 
+    
     for line in text_content.split("\n"):
-        # Encode string to latin-1 compatible for FPDF default font
-        clean_line = line.encode('latin-1', 'replace').decode('latin-1')
-        pdf.multi_cell(0, 6, txt=clean_line)
+        clean_line = line.replace('\t', '    ').replace('**', '').replace('*', '')
+        clean_line = clean_line.encode('latin-1', 'replace').decode('latin-1')
+        pdf.multi_cell(epw, 6, txt=clean_line)
     
     return bytes(pdf.output())
 
@@ -45,50 +47,62 @@ if st.button("✨ Generate Worksheet", type="primary"):
         st.error("Please provide a Gemini API Key.")
     else:
         with st.spinner(f"Analyzing {len(uploaded_files)} image(s) and generating worksheet..."):
-            try:
-                client = genai.Client(api_key=api_key)
-                images = [Image.open(file) for file in uploaded_files]
-                
-                # Updated prompt for strict line breaks on options A, B, C, D
-                prompt = f"""
-                You are an expert school teacher. Analyze all the attached textbook images completely as a continuous chapter/lesson.
-                Based strictly on the content found across all these images, generate a clean worksheet containing:
+            client = genai.Client(api_key=api_key)
+            images = [Image.open(file) for file in uploaded_files]
+            
+            prompt = f"""
+            You are an expert school teacher. Analyze all the attached textbook images completely as a continuous chapter/lesson.
+            Based strictly on the content found across all these images, generate a clean worksheet containing:
 
-                1. {mcqs} Multiple Choice Questions. 
-                   CRITICAL FORMATTING FOR MCQS:
-                   Put the question text on its own line.
-                   Put EACH option (A, B, C, D) on a NEW LINE directly below the question. 
-                   Example:
-                   1. What is the main source of light?
-                   A) Sun
-                   B) Moon
-                   C) Lamp
-                   D) Candle
+            1. {mcqs} Multiple Choice Questions. 
+               CRITICAL FORMATTING FOR MCQS:
+               Put the question text on its own line.
+               Put EACH option (A, B, C, D) on a NEW LINE directly below the question. 
+               Example:
+               1. What is the main source of light?
+               A) Sun
+               B) Moon
+               C) Lamp
+               D) Candle
 
-                2. {t_f} True or False statements
-                3. {blanks} Fill in the Blanks questions
-                4. {long_qs} Short/Long Answer Questions (with model answers)
-                
-                Provide a clear "Answer Key" at the very bottom for items 1, 2, and 3.
-                Formatting: Use clear headers and line spacing.
-                """
-                
-                contents = [prompt] + images
-                
-                response = client.models.generate_content(
-                    model='gemini-flash-latest',
-                    contents=contents
-                )
-                
-                st.success("Worksheet Generated!")
+            2. {t_f} True or False statements
+            3. {blanks} Fill in the Blanks questions
+            4. {long_qs} Short/Long Answer Questions (with model answers)
+            
+            Provide a clear "Answer Key" at the very bottom for items 1, 2, and 3.
+            Formatting: Use clear headers and clean spacing.
+            """
+            
+            contents = [prompt] + images
+            
+            # Retry logic for 503 high demand errors
+            response = None
+            max_retries = 3
+            
+            for attempt in range(max_retries):
+                try:
+                    response = client.models.generate_content(
+                        model='gemini-3.5-flash',
+                        contents=contents
+                    )
+                    break # Success! Break out of the loop
+                except Exception as e:
+                    if "503" in str(e) and attempt < max_retries - 1:
+                        time.sleep(3) # Wait 3 seconds before retrying
+                        continue
+                    else:
+                        st.error(f"Error: {e}")
+                        break
+
+            if response and response.text:
+                st.success("Worksheet Generated Successfully!")
                 
                 worksheet_text = response.text
                 st.markdown(worksheet_text)
                 
-                # Generate PDF binary data
                 pdf_bytes = create_pdf(worksheet_text)
                 
-                # Add PDF Download Button
+                st.markdown("---")
                 st.download_button(
                     label="📄 Download Worksheet as PDF",
                     data=pdf_bytes,
@@ -96,6 +110,3 @@ if st.button("✨ Generate Worksheet", type="primary"):
                     mime="application/pdf",
                     type="primary"
                 )
-                
-            except Exception as e:
-                st.error(f"Error: {e}")
