@@ -50,7 +50,12 @@ if st.button("✨ Generate Worksheet", type="primary"):
     else:
         with st.spinner(f"Analyzing {len(uploaded_files)} image(s) and generating worksheet..."):
             client = genai.Client(api_key=api_key)
-            images = [Image.open(file) for file in uploaded_files]
+            images = []
+for file in uploaded_files:
+    img = Image.open(file)
+    # Resize image to max 1200px while keeping aspect ratio (saves huge amounts of tokens)
+    img.thumbnail((1200, 1200))
+    images.append(img)
             
             prompt = f"""
             You are an expert school teacher. Analyze all the attached textbook images completely as a continuous chapter/lesson.
@@ -90,12 +95,15 @@ if st.button("✨ Generate Worksheet", type="primary"):
                     if response and response.text:
                         break # Success!
                 except Exception as e:
-                    if "503" in str(e) or "404" in str(e):
-                        time.sleep(2)
-                        continue # Try the next model in the list
-                    else:
-                        st.error(f"Error: {e}")
-                        break
+            if "503" in str(e) or "404" in str(e):
+                time.sleep(2)
+                continue  # Try the next model in the list
+            elif "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+                st.warning("⏳ Free API rate limit reached! Please wait 60 seconds and click Generate again.")
+                break
+            else:
+                st.error(f"Error: {e}")
+                break
 
             if response and response.text:
                 st.success("Worksheet Generated Successfully!")
