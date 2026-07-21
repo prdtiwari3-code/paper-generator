@@ -31,12 +31,18 @@ def create_pdf(text_content):
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.set_font("Helvetica", size=11)
     
-    epw = pdf.epw 
+    # Strip markdown symbols like # and * for clean PDF rendering
+    import re
+    clean_text = re.sub(r'[\*\#\_]', '', text_content)
     
-    for line in text_content.split("\n"):
-        clean_line = line.replace('\t', '    ').replace('**', '').replace('*', '')
-        clean_line = clean_line.encode('latin-1', 'replace').decode('latin-1')
-        pdf.multi_cell(epw, 6, txt=clean_line)
+    # Process line by line
+    for line in clean_text.split("\n"):
+        # Replace tabs and convert special characters to safe plain text
+        safe_line = line.replace('\t', '    ')
+        safe_line = safe_line.encode('latin-1', 'ignore').decode('latin-1')
+        
+        # Write line to PDF (0 width means extend to right margin)
+        pdf.multi_cell(0, 6, txt=safe_line)
     
     return bytes(pdf.output())
 
