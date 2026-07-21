@@ -3,6 +3,7 @@ from google import genai
 from PIL import Image
 from fpdf import FPDF
 import time
+import re
 
 st.set_page_config(page_title="AI Worksheet Generator", layout="centered")
 
@@ -32,16 +33,11 @@ def create_pdf(text_content):
     pdf.set_font("Helvetica", size=11)
     
     # Strip markdown symbols like # and * for clean PDF rendering
-    import re
     clean_text = re.sub(r'[\*\#\_]', '', text_content)
     
-    # Process line by line
     for line in clean_text.split("\n"):
-        # Replace tabs and convert special characters to safe plain text
         safe_line = line.replace('\t', '    ')
         safe_line = safe_line.encode('latin-1', 'ignore').decode('latin-1')
-        
-        # Write line to PDF (0 width means extend to right margin)
         pdf.multi_cell(0, 6, txt=safe_line)
     
     return bytes(pdf.output())
@@ -81,21 +77,22 @@ if st.button("✨ Generate Worksheet", type="primary"):
             
             contents = [prompt] + images
             
-            # Retry logic for 503 high demand errors
+            # List of models to try in order (if primary is busy, fallback to secondary)
+            models_to_try = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']
             response = None
-            max_retries = 3
             
-            for attempt in range(max_retries):
+            for model_name in models_to_try:
                 try:
                     response = client.models.generate_content(
-                        model='gemini-3.5-flash',
+                        model=model_name,
                         contents=contents
                     )
-                    break # Success! Break out of the loop
+                    if response and response.text:
+                        break # Success!
                 except Exception as e:
-                    if "503" in str(e) and attempt < max_retries - 1:
-                        time.sleep(3) # Wait 3 seconds before retrying
-                        continue
+                    if "503" in str(e) or "404" in str(e):
+                        time.sleep(2)
+                        continue # Try the next model in the list
                     else:
                         st.error(f"Error: {e}")
                         break
@@ -106,6 +103,7 @@ if st.button("✨ Generate Worksheet", type="primary"):
                 worksheet_text = response.text
                 st.markdown(worksheet_text)
                 
+                # Create PDF safely
                 pdf_bytes = create_pdf(worksheet_text)
                 
                 st.markdown("---")
