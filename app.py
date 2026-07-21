@@ -76,7 +76,7 @@ if st.button("✨ Generate Worksheet", type="primary"):
                 contents = [prompt] + images
                 
                 response = client.models.generate_content(
-                    model='gemini-3.5-flash',
+                    model='gemini-flash-latest',
                     contents=contents
                 )
                 
